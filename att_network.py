@@ -1,21 +1,18 @@
 import math
 import os
 from os import path as osp
-import random
 from xmlrpc.client import boolean
-import time
 
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-import tensorflow.keras.backend as K
-from tensorflow.compat.v1.train import Saver, latest_checkpoint, cosine_decay, cosine_decay_restarts, MomentumOptimizer
-from tensorflow.contrib.memory_stats import BytesLimit, MaxBytesInUse, BytesInUse
-from tensorflow.keras.layers import Dense, GaussianNoise, Dropout, BatchNormalization
-from tensorflow.keras.initializers import glorot_uniform, Ones, he_uniform, RandomUniform
-from tensorflow.contrib.opt import AdamWOptimizer, MomentumWOptimizer, extend_with_decoupled_weight_decay
-from utils import get_mask, get_rand_mask, get_rand_mask_for_val, get_zero_mask, normalize
-from tqdm import tqdm, trange
+from tensorflow.compat.v1.train import Saver
+from tensorflow.contrib.memory_stats import MaxBytesInUse, BytesInUse
+from tensorflow.keras.layers import Dense, GaussianNoise, Dropout
+from tensorflow.keras.initializers import glorot_uniform
+from tensorflow.contrib.opt import AdamWOptimizer
+from utils import get_mask, get_rand_mask
+from tqdm import trange
 
 class Model(object):
     def __init__(self, data_dir, dataset_dir, output_dir, dims, learning_rate, batch_size, lambda_a, lambda_b, lambda_c, lambda_d, epochs=2000, seed=0, n_cores=-1, noise_sd = 1.5):
@@ -45,7 +42,7 @@ class Model(object):
         with tf.compat.v1.variable_scope("sc"):
             self.gene_b = tf.nn.relu(tf.compat.v1.get_variable(name="gb", shape=[self.dims[0]], dtype=tf.float32, initializer=glorot_uniform(seed=self.seed)))
             self.GRN = tf.compat.v1.get_variable(name='grn', shape=[self.dims[0], self.dims[0]], dtype=tf.float32, initializer=glorot_uniform(seed=self.seed))
-        
+
             self.noise = GaussianNoise(self.noise_sd, name='noise')
             self.noised_x = self.noise(self.x)
             self.select_enc_dense1 = Dense(units=self.dims[-1], kernel_initializer=glorot_uniform(seed=self.seed), name='s_enc1')
@@ -67,7 +64,7 @@ class Model(object):
             self.auto_decode_X = self.auto_decode_X_dense(self.h)
             self.alp = tf.math.sigmoid(tf.compat.v1.get_variable(name="alp", shape=[self.dims[0]], dtype=tf.float32, initializer=glorot_uniform(seed=self.seed)))
         self.imX = self.alp * tf.matmul(tf.multiply(self.target, self.non_zero_mask) + tf.multiply(self.auto_decode_X, 1 - self.non_zero_mask), tf.multiply(self.GRN, 1 - tf.constant(np.eye(self.dims[0], dtype=np.float32)))) + (1 - self.alp) * self.gene_b
-        self.ae_loss = tf.reduce_sum(input_tensor=tf.multiply(tf.divide(tf.square(self.auto_decode_X-self.target), 
+        self.ae_loss = tf.reduce_sum(input_tensor=tf.multiply(tf.divide(tf.square(self.auto_decode_X-self.target),
                                                                         tf.reshape(tf.reduce_sum(input_tensor=self.non_zero_mask, axis=1), (-1,1))),
                                                             self.non_zero_mask))
         self.grn_loss = tf.reduce_sum(input_tensor=tf.multiply(tf.divide(tf.square(self.imX-self.target),
@@ -100,7 +97,6 @@ class Model(object):
         X = adata.X[:valid_split].astype(np.float32)
         unscale_X = adata_unscaled[:valid_split].X.astype(np.float32)
         count_X = adata_cnt.X[:valid_split].astype(np.float32)
-        Y = adata.obs["cell_groups"][:valid_split]
         # do not consider biological zeros
         # !!!!!
         nonzero_mask = get_mask(unscale_X)
@@ -126,13 +122,12 @@ class Model(object):
 
             # valid_nonzero_mask = post_zero_mask[valid_split:]
             # valid_observe_mask = get_rand_mask_for_val(valid_unscale_X, rng, valid_dropout, valid_nonzero_mask)
-            
-            valid_bench_mask = valid_nonzero_mask - valid_observe_mask        
+
+            valid_bench_mask = valid_nonzero_mask - valid_observe_mask
 
             valid_input_X = np.multiply(valid_observe_mask, valid_X) + np.multiply(valid_bench_mask, np.min(valid_X, 0, keepdims=True))
             valid_input_unscale_X = np.multiply(valid_observe_mask, valid_unscale_X)
             valid_input_count_X = np.multiply(valid_observe_mask, valid_count_X)
-            valid_Y = adata.obs["cell_groups"][valid_split:]
 
         cells_name = adata.obs['cell_name']
         genes_name = adata.var['gene_name']
@@ -218,26 +213,15 @@ class Model(object):
             self.set_training(False)
 
             if valid_split != len(adata.X):
-                if "gene-gene" in self.lambda_h:
-                    valid_imX = self.sess.run(
-                        [self.auto_decode_X],
-                        feed_dict={
-                            self.training_flag: False,
-                            self.x: valid_input_X,
-                            self.unscale_x: valid_input_unscale_X,
-                            self.x_count: valid_input_count_X,
-                            self.non_zero_mask: valid_observe_mask,
-                            })
-                else:
-                    valid_imX = self.sess.run(
-                        [self.imX],
-                        feed_dict={
-                            self.training_flag: False,
-                            self.x: valid_input_X,
-                            self.unscale_x: valid_input_unscale_X,
-                            self.x_count: valid_input_count_X,
-                            self.non_zero_mask: valid_observe_mask,
-                            })
+                valid_imX = self.sess.run(
+                    [self.imX],
+                    feed_dict={
+                        self.training_flag: False,
+                        self.x: valid_input_X,
+                        self.unscale_x: valid_input_unscale_X,
+                        self.x_count: valid_input_count_X,
+                        self.non_zero_mask: valid_observe_mask,
+                        })
                 valid_imX = np.squeeze(valid_imX)
 
                 curr_valid_error = np.divide(np.sum(np.square(np.multiply(valid_count_X - valid_imX, valid_bench_mask))), np.sum(valid_bench_mask))
@@ -245,24 +229,14 @@ class Model(object):
                 if min_valid_error > curr_valid_error:
                     min_valid_error = curr_valid_error
                     min_valid_error_epoch = i
-                    if "gene-gene" in self.lambda_h:
-                        corresponding_imX, corresponding_select_m, corresponding_h, corresponding_GRN, corresponding_gene_b, corresponding_alp = self.sess.run([self.auto_decode_X, self.select_m, self.h, self.GRN, self.gene_b, self.alp],
-                                    feed_dict={
-                                        self.training_flag: False,
-                                        self.x: np.concatenate((X, valid_X), axis=0),
-                                        self.unscale_x: np.concatenate([unscale_X, valid_unscale_X], axis=0),
-                                        self.x_count: np.concatenate([count_X, valid_count_X], axis=0),
-                                        self.non_zero_mask: np.concatenate([nonzero_mask, valid_nonzero_mask], axis=0)
-                                    })
-                    else:
-                        corresponding_imX, corresponding_select_m, corresponding_h, corresponding_GRN, corresponding_gene_b, corresponding_alp = self.sess.run([self.imX, self.select_m, self.h, self.GRN, self.gene_b, self.alp],
-                                    feed_dict={
-                                        self.training_flag: False,
-                                        self.x: np.concatenate((X, valid_X), axis=0),
-                                        self.unscale_x: np.concatenate([unscale_X, valid_unscale_X], axis=0),
-                                        self.x_count: np.concatenate([count_X, valid_count_X], axis=0),
-                                        self.non_zero_mask: np.concatenate([nonzero_mask, valid_nonzero_mask], axis=0)
-                                    })
+                    corresponding_imX, corresponding_select_m, corresponding_h, corresponding_GRN, corresponding_gene_b, corresponding_alp = self.sess.run([self.imX, self.select_m, self.h, self.GRN, self.gene_b, self.alp],
+                                feed_dict={
+                                    self.training_flag: False,
+                                    self.x: np.concatenate((X, valid_X), axis=0),
+                                    self.unscale_x: np.concatenate([unscale_X, valid_unscale_X], axis=0),
+                                    self.x_count: np.concatenate([count_X, valid_count_X], axis=0),
+                                    self.non_zero_mask: np.concatenate([nonzero_mask, valid_nonzero_mask], axis=0)
+                                })
                 if min_valid_error < curr_valid_error:
                     early_stop_cnt += 1
                     if early_stop_cnt >= 1000:
@@ -271,41 +245,31 @@ class Model(object):
                 else:
                     early_stop_cnt = 0
             else:
-                if "gene-gene" in self.lambda_h:
-                    corresponding_imX, corresponding_select_m, corresponding_h, corresponding_GRN, corresponding_gene_b, corresponding_alp = self.sess.run([self.auto_decode_X, self.select_m, self.h, self.GRN, self.gene_b, self.alp],
+                continue
+                fetch_batch_size = min(16384, len(X))
+                corresponding_imX = np.empty((X.shape[0], X.shape[1]))
+                corresponding_select_m = np.empty((X.shape[0], X.shape[1]))
+                corresponding_h = np.empty((X.shape[0], self.dims[-1]))
+                corresponding_GRN, corresponding_gene_b, corresponding_alp = self.sess.run([self.GRN, self.gene_b, self.alp],
+                            feed_dict={
+                                self.training_flag: False,
+                            })
+                print(i, "before", self.sess.run(MaxBytesInUse())/1024/1024/1024)
+                print(i, "before", self.sess.run(BytesInUse())/1024/1024/1024)
+                for i in range(math.ceil(float(len(X)) / float(fetch_batch_size))):
+                    fetch_batch_start = i * fetch_batch_size
+                    fetch_batch_end = min((i + 1) * fetch_batch_size, len(X))
+                    corresponding_imX[fetch_batch_start:fetch_batch_end], corresponding_select_m[fetch_batch_start:fetch_batch_end], corresponding_h[fetch_batch_start:fetch_batch_end] = self.sess.run([self.imX, self.select_m, self.h],
                                 feed_dict={
                                     self.training_flag: False,
-                                    self.x: X,
-                                    self.unscale_x: unscale_X,
-                                    self.x_count: count_X,
-                                    self.non_zero_mask: nonzero_mask
+                                    self.x: X[fetch_batch_start:fetch_batch_end],
+                                    self.unscale_x: unscale_X[fetch_batch_start:fetch_batch_end],
+                                    self.x_count: count_X[fetch_batch_start:fetch_batch_end],
+                                    self.non_zero_mask: nonzero_mask[fetch_batch_start:fetch_batch_end]
                                 })
-                else:
-                    continue
-                    fetch_batch_size = min(16384, len(X))
-                    corresponding_imX = np.empty((X.shape[0], X.shape[1]))
-                    corresponding_select_m = np.empty((X.shape[0], X.shape[1]))
-                    corresponding_h = np.empty((X.shape[0], self.dims[-1]))
-                    corresponding_GRN, corresponding_gene_b, corresponding_alp = self.sess.run([self.GRN, self.gene_b, self.alp],
-                                feed_dict={
-                                    self.training_flag: False,
-                                })
-                    print(i, "before", self.sess.run(MaxBytesInUse())/1024/1024/1024)
-                    print(i, "before", self.sess.run(BytesInUse())/1024/1024/1024)
-                    for i in range(math.ceil(float(len(X)) / float(fetch_batch_size))):
-                        fetch_batch_start = i * fetch_batch_size
-                        fetch_batch_end = min((i + 1) * fetch_batch_size, len(X))
-                        corresponding_imX[fetch_batch_start:fetch_batch_end], corresponding_select_m[fetch_batch_start:fetch_batch_end], corresponding_h[fetch_batch_start:fetch_batch_end] = self.sess.run([self.imX, self.select_m, self.h],
-                                    feed_dict={
-                                        self.training_flag: False,
-                                        self.x: X[fetch_batch_start:fetch_batch_end],
-                                        self.unscale_x: unscale_X[fetch_batch_start:fetch_batch_end],
-                                        self.x_count: count_X[fetch_batch_start:fetch_batch_end],
-                                        self.non_zero_mask: nonzero_mask[fetch_batch_start:fetch_batch_end]
-                                    })
 
-                    print(i, "after", self.sess.run(MaxBytesInUse())/1024/1024/1024)
-                    print(i, "after", self.sess.run(BytesInUse())/1024/1024/1024)
+                print(i, "after", self.sess.run(MaxBytesInUse())/1024/1024/1024)
+                print(i, "after", self.sess.run(BytesInUse())/1024/1024/1024)
         # toc = time.perf_counter()
         # GB_mem = self.sess.run(MaxBytesInUse())/1024/1024/1024
         # duration = toc - tic
@@ -317,15 +281,12 @@ class Model(object):
         # raise
         self.stored_train_ae_loss = np.array(self.stored_train_ae_loss)
         self.stored_normalized_grn_loss = np.array(self.stored_normalized_grn_loss)
-        self.stored_count_grn_loss = np.array(self.stored_count_grn_loss)
         self.stored_mask_loss = np.array(self.stored_mask_loss)
-        self.stored_close_loss = np.array(self.stored_close_loss)
         self.stored_imputation_mse = np.array(self.stored_imputation_mse)
-        self.stored_neg_sample_loss = np.array(self.stored_neg_sample_loss)
         if valid_split != len(adata.X):
             self.stored_valid_mse = np.array(self.stored_valid_mse)
             print(min_valid_error_epoch, min_valid_error)
-        
+
         self.set_training(False)
 
         ### original ###
@@ -337,18 +298,18 @@ class Model(object):
         if valid_split == len(adata.X):
             valid_count_X = np.zeros((0, count_X.shape[1]))
             valid_nonzero_mask = np.zeros((0, nonzero_mask.shape[1]))
-        corresponding_recover_imX = np.multiply(np.concatenate([count_X, valid_count_X], axis=0), 
+        corresponding_recover_imX = np.multiply(np.concatenate([count_X, valid_count_X], axis=0),
                 np.concatenate([nonzero_mask, valid_nonzero_mask], axis=0)) + \
-            np.multiply(corresponding_imX, 
+            np.multiply(corresponding_imX,
                 1 - np.concatenate([nonzero_mask, valid_nonzero_mask], axis=0))
 
         self.recover_imX_df = pd.DataFrame(np.array(corresponding_recover_imX), index=cells_name, columns=genes_name)
 
-        corresponding_imX = np.multiply(np.concatenate([count_X, valid_count_X], axis=0), 
+        corresponding_imX = np.multiply(np.concatenate([count_X, valid_count_X], axis=0),
                 post_zero_mask) + \
-            np.multiply(corresponding_imX, 
+            np.multiply(corresponding_imX,
                 1 - post_zero_mask)
-        
+
         self.h_df = pd.DataFrame(np.array(np.squeeze(corresponding_h)), index=cells_name)
         self.imX_df = pd.DataFrame(np.array(corresponding_imX), index=cells_name, columns=genes_name)
 
@@ -364,22 +325,22 @@ class Model(object):
         # if valid_split == len(adata.X):
         #     valid_count_X = np.zeros((0, count_X.shape[1]))
         #     valid_nonzero_mask = np.zeros((0, nonzero_mask.shape[1]))
-        # corresponding_recover_imX = np.multiply(np.concatenate([count_X, valid_count_X], axis=0), 
+        # corresponding_recover_imX = np.multiply(np.concatenate([count_X, valid_count_X], axis=0),
         #         np.concatenate([nonzero_mask, valid_nonzero_mask], axis=0)) + \
-        #     np.multiply(corresponding_imX, 
+        #     np.multiply(corresponding_imX,
         #         1 - np.concatenate([nonzero_mask, valid_nonzero_mask], axis=0))
 
         # self.recover_imX_df = pd.DataFrame(np.array(corresponding_recover_imX), index=cells_name, columns=genes_name)
-        # corresponding_imX = np.multiply(np.concatenate([count_X, valid_count_X], axis=0), 
+        # corresponding_imX = np.multiply(np.concatenate([count_X, valid_count_X], axis=0),
         #         post_zero_mask) + \
-        #     np.multiply(corresponding_imX, 
+        #     np.multiply(corresponding_imX,
         #         1 - post_zero_mask)
-        
+
         # self.h_df = pd.DataFrame(np.array(np.squeeze(corresponding_h)), index=cells_name)
         # self.imX_df = pd.DataFrame(np.array(corresponding_imX), index=cells_name, columns=genes_name)
         # ### knn ###
 
-        
+
         self.select_m_df = pd.DataFrame(np.array(corresponding_select_m), index=cells_name, columns=genes_name)
         self.grn_df = pd.DataFrame(np.array(np.squeeze(corresponding_GRN)), index=genes_name, columns=genes_name)
         self.gene_b_df = pd.DataFrame(np.array(corresponding_gene_b), index=genes_name).T

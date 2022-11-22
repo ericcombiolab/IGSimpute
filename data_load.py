@@ -4,11 +4,9 @@ import numpy as np
 from numpy.random import default_rng
 import pandas as pd
 import scanpy as sc
-from utils import get_mask, get_rand_mask, get_zero_mask
+from utils import get_mask
 from os import path as osp
-import re
-import dataset_load
-from dataset_load import preprocess, preprocess_for_imputation, preprocess_for_imputation_origin, load_preprocessed, load_h5ad, load_csv
+from dataset_load import preprocess, load_preprocessed, load_h5ad, load_csv
 
 def load_data(data_dir, dataset_dir, exp_file_name, highly_genes, n_neighbors=10, rng=default_rng(), generate_files=False, seed=0, ref_dropout=0.2, low_expression_threshold=0.20, low_expression_percentage=0.80):
     if dataset_dir.startswith("tm_droplet_"):

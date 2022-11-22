@@ -22,6 +22,8 @@ You need to first activate the environment by:
 
 `conda activate IGSimpute`
 
+Tabula Muris atlas can be downloaded from https://drive.google.com/file/d/1-3jGkROAVhDopGlMBbGSM1lIuvp1sozE/view?usp=sharing
+
 You can run the command below to perform imputation on the heart-and-aorta tissue in the Tabula Muris atlas:
 
 `./run_IGSimpute.sh`

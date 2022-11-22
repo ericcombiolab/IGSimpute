@@ -41,7 +41,6 @@ if __name__ == "__main__":
     dataset_dir = args.dataset_dir
     data_dir = args.data_dir
     highly_genes_num = args.highly_genes_num
-    output_file_prefix = args.output_file_prefix
     output_dir = args.output_dir
     seed = args.seed
     batch_size = args.batch_size
@@ -50,7 +49,6 @@ if __name__ == "__main__":
     exp_file_name = args.exp_file_name
     generate_files = args.generate_files
     gpu_option = args.gpu_option
-    L2 = args.L2
     lambda_a = 0 if args.lambda_a is None or args.lambda_a == "None" else float(args.lambda_a)
     lambda_b = 0 if args.lambda_b is None or args.lambda_b == "None" else float(args.lambda_b)
     lambda_c = 0 if args.lambda_c is None or args.lambda_c == "None" else float(args.lambda_c)
@@ -97,5 +95,5 @@ if __name__ == "__main__":
         model.train(adata, adata_unscaled, adata_cnt, post_zero_mask, valid_split, valid_dropout, rng, gpu_option)
 
         # # for imputation
-        model.recover_imX_df.to_csv(os.path.join(data_dir, dataset_dir, output_dir, output_file_prefix + ".name.csv") + compression, chunksize=chunk_size)
-        model.imX_df.to_csv(os.path.join(data_dir, dataset_dir, output_dir, output_file_prefix + ".KNN.name.csv") + compression, chunksize=chunk_size)
+        model.recover_imX_df.to_csv(os.path.join(data_dir, dataset_dir, output_dir, "IGSimpute.name.csv") + compression, chunksize=chunk_size)
+        model.imX_df.to_csv(os.path.join(data_dir, dataset_dir, output_dir, "IGSimpute.KNN.name.csv") + compression, chunksize=chunk_size)

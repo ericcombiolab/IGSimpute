@@ -1,10 +1,7 @@
-import numpy as np
 from numpy.random import default_rng
 import pandas as pd
 from os import path as osp
 import scanpy as sc
-from utils import get_mask, get_rand_mask, get_zero_mask
-import re
 import os
 
 def load_preprocessed(X_count, X_unscaled, cell_names, gene_names, type_name_df=None, z_normalize=True):
