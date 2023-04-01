@@ -30,6 +30,8 @@ You can run the command below to perform imputation on the heart-and-aorta tissu
 
 If you want to perform imputation on your own dataset, you need to modify parameters defined in `run_IGSimpute.sh`.
 
+For using integrated gradients, train with `--ig` flag and refer to `integrated_gradients.ipynb`.
+
 ### Parameters
 Name | Default value | Description 
 ------------ | ------------ | ------------
@@ -43,6 +45,7 @@ split_pct | "0.8" | The percentage of cells used as training dataset, and the le
 target_format | "count" | The expected output format.
 ggl_loss_weight | "1" | The weight of $L_{gg}$.
 gsl_L1_weight | "0.01 | The weight of $L_{gs}$.
+ig | False | Using unscaled input during training such that integrated gradients can be applied after training.
 rec_loss_weight | "0.1 | The weight of $L_{rec}$.
 batch_size | 256 | Minibatch size.
 dim | 400 | Size of the innermost embedding.
@@ -59,6 +62,6 @@ valid_dropout | "0.2" | The percentage of non-zero entries to be used for valida
 IGSimpute accepts expression profiles in `h5ad` or `csv` format. Each row should correspond to a cell and each column should correspond to a gene.
 
 ## Results
-The output will be put inside `"data_dir/dataset_dir/imputation_output"` directory. `"IGSimpute.name.csv.gz"` is the imputed expression matrix without KNN post-processing and `"IGSimpute.KNN.name.csv"` is the imputed expression matrix wit KNN post-processing.
+The output will be put inside `"data_dir/dataset_dir/output_dir"` directory. `"IGSimpute.name.csv.gz"` is the imputed expression matrix without KNN post-processing and `"IGSimpute.KNN.name.csv"` is the imputed expression matrix wit KNN post-processing.
 
 

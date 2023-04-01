@@ -8,11 +8,11 @@ from utils import get_mask
 from os import path as osp
 from dataset_load import preprocess, load_preprocessed, load_h5ad, load_csv
 
-def load_data(data_dir, dataset_dir, exp_file_name, highly_genes, n_neighbors=10, rng=default_rng(), generate_files=False, seed=0, ref_dropout=0.2, low_expression_threshold=0.20, low_expression_percentage=0.80):
+def load_data(data_dir, dataset_dir, highly_genes, n_neighbors=10, rng=default_rng(), generate_files=False, seed=0, low_expression_threshold=0.20, low_expression_percentage=0.80, exp_file_name=None):
     if dataset_dir.startswith("tm_droplet_"):
         if generate_files:
-            sc_input_adata = sc.read_h5ad(osp.join(data_dir, 'czbiohub-tabula-muris', 'TM_droplet_mat.h5ad'))
-            sc_anno_df = pd.read_csv(osp.join(data_dir, 'czbiohub-tabula-muris', 'TM_droplet_metadata.csv'), low_memory=False)
+            sc_input_adata = sc.read_h5ad(osp.join(data_dir, 'TM_droplet_mat.h5ad'))
+            sc_anno_df = pd.read_csv(osp.join(data_dir, 'TM_droplet_metadata.csv'), low_memory=False)
             if not dataset_dir.endswith("all"):
                 sc_anno_df = sc_anno_df.loc[sc_anno_df['tissue'] == '_'.join(dataset_dir.split('_')[2:]), :]
             sc_expression = sc_input_adata[sc_anno_df.index, :].X.toarray()
